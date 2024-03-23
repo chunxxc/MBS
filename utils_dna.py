@@ -1,12 +1,20 @@
 # in this script, K is kmer
 import sys
 import os
+import matplotlib.pyplot as plt
 import numpy as np
 # import tables # do not involve if not needed
+from tqdm import tqdm
 from scipy.stats import norm,poisson
 np.set_printoptions(threshold=sys.maxsize)
 base_dict_op = {0:'A', 1:'C', 2:'G', 3:'T'}
 base_dict = {'A': 0, 'C': 1, 'G': 2, 'T': 3, 'a': 0, 'c': 1, 'g': 2, 't': 3}
+def write_fasta(f,read_id,read_bases):
+  f.write('>'+read_id+'\n')
+  for i in range(len(read_bases)//80+1):
+    f.write(read_bases[i*80:(i+1)*80])
+    f.write('\n')
+
 def estimate_duration_poisson(signals,window_size=4,diff_thre=0.4):
   #signals = signals.reshape(-1)
   sig_len = len(signals)
@@ -81,6 +89,35 @@ def translate_result(result_dict,k):
         kmer_inv = base2num(kmer_n[1:],1,op=1,flip=1)
         bases.append(kmer_1+kmer_inv)
     return bases
+def plot_list(l,ali=[],base='',max_plot = 20,save_fig=False):
+  if type(l)==list:
+    if len(l) < 20:
+      max_plot = len(l)
+    for i in range(max_plot):
+      plt.figure()
+      plt.plot(l[i])
+      plt.xticks(ali[i],list(base[i]))
+      plt.grid(True)
+      if save_fig:
+        fname = 'HMM_align_'+str(i)
+        plt.savefig(PARAMS.savepath+fname,format='png')
+      else:
+        plt.draw()
+        plt.pause(1) # <-------
+        input('<Hit Enter To Close>')
+  else:
+    plt.figure()
+    plt.plot(l) 
+    plt.xticks(ali,list(base))
+    plt.grid()
+    if save_fig:
+      fname = 'HMM_align_'+str(i)
+      plt.savefig(PARAMS.savepath+fname,format='png')
+    else:
+      plt.draw()
+      plt.pause(1) # <-------
+      input('<Hit Enter To Close>')
+  plt.close()
 def A_init(K):#inital A with 0.25
   base_dict_op = {0:'A', 1:'C', 2:'G', 3:'T'}
   A = np.zeros((4**K,4**K))
@@ -271,3 +308,71 @@ def transferflip(base_i,K):
   # take in a array of base_idx and flip the coding rule
   flip_i = base2num(base2num(base_i,K,op=True),K,flip=True)
   return flip_i
+################################################################################################
+def seg_assembler(base_list):
+  T = len(base_list)
+  max_len = len(max(base_list,key=len))
+  ass = np.zeros((4,max_len*T))
+  print('assembling segments')
+  for i in tqdm(range(T-1)):
+    matches = matcher(a=base_list[i],b=base_list[i+1])
+    if i==0:
+      Ta = len(base_list[i])
+      Tb = len(base_list[i+1])
+      Ia = base2num(list(base_list[i]),1)
+      Ib = base2num(list(base_list[i+1]),1)
+      match_idx = matches.find_longest_match(0,Ta,0,Tb)
+      start_i = match_idx[0]-match_idx[1]
+      ass[Ia,np.arange(Ta)] += 1
+      ass[Ib,np.arange(Tb)+start_i] += 1
+      Ta = Tb
+    else:
+      Tb = len(base_list[i+1])
+      Ib = base2num(list(base_list[i+1]),1)
+      match_idx = matches.find_longest_match(0,Ta,0,Tb)
+      start_i += match_idx[0] - match_idx[1]
+      ass[Ib,np.arange(Tb)+start_i] += 1
+      Ta = Tb
+    ass_nonzero = np.where(np.max(ass,axis=0)!=0)[0]
+    ass_base = base2num(np.argmax(ass[:,ass_nonzero],axis=0),1,op=1)
+  return ass_base
+def assembler(Z_idx,Z_base,kmer,start=0):
+  # the input has to include the duration information as well
+  repeat_idx = np.zeros(4)
+  for i in range(4):
+    for j in range(kmer):
+      repeat_idx[i] += i*(4**j)
+  repeat_base = base2num(repeat_idx,kmer,op=True) # only care about 'AAA' 'CCC' 'GGG' 'TTT'
+  #print(repeat_test)
+  T = len(Z_idx)
+  base = ''
+  repeat = 0
+  for i in range(T):
+    #isspecial = len(np.where(repeat_test==Z_idx[i])[0])>0
+    if len(base)==0:
+      base = base + Z_base[i][start:]
+      '''
+    elif Z_idx[i-1]==Z_idx[i]:# only care about 'AAA' 'CCC' 'GGG' 'TTT'
+      if Z_base[i] in repeat_base:
+        repeat = repeat + 1
+        if repeat > repeat_len:
+          base = base + Z_base[i][-1]
+          repeat = 0
+      else:
+        continue
+      '''
+    elif i==T-1:
+      base = base + Z_base[i][start:]
+    else:
+      repeat = 0
+      base = base + Z_base[i][start]
+  return base #string
+def base_only_assembly(bases,kmer,start=0):
+  # take input array of bases or its idx with no duraing information and consecutive them together
+  if type(bases[0]) != str:
+    bases = base2num(bases,kmer,op=True)
+  sequence = bases[0]
+  for i in range(1,len(bases)):
+    sequence += bases[i][-1]
+  return sequence
+################################################################################################
