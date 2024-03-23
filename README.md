@@ -1,4 +1,4 @@
-# Marginalized Beam Ssearch (MBS)
+# Marginalized Beam Search (MBS)
 This git repository contains the code and simulation data generator for the paper 'Marginalized Beam Search Algorithms for Hierarchical HMMs'. 
 > For DNA data see the paper 'Lokatt: A hybrid DNA nanopore basecaller with an explicit duration hidden Markov model and a residual LSTM network'.
 
